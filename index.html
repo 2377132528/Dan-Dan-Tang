@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#8fd4f4" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="screen-orientation" content="landscape" />
+    <meta name="x5-orientation" content="landscape" />
+    <meta name="x5-fullscreen" content="true" />
+    <meta name="x5-page-mode" content="app" />
+    <meta name="description" content="弹弹堂 · 风之物语：一个可以单人挑战、本地双人和联机对战的弹道对战小游戏。" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>弹弹堂 · 风之物语</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="stage">
+        <div id="frame">
+        <canvas id="game" aria-label="弹弹堂游戏画面"></canvas>
+        <div id="vignette"></div>
+
+        <div id="hud" class="hidden">
+          <div class="roster roster-red" id="roster-red"></div>
+          <div class="roster roster-blue" id="roster-blue"></div>
+
+          <div class="top-center">
+            <div class="turn-chip" id="turn-chip"><span class="turn-chip-dot"></span><span id="turn-chip-text">红队回合</span></div>
+            <div class="wind-panel" title="风会改变炮弹的飞行轨迹">
+              <span class="wind-label">风</span>
+              <div class="wind-arrow" id="wind-arrow">→</div>
+              <span class="wind-value" id="wind-value">0.0</span>
+            </div>
+            <div class="timer-ring" id="timer-ring">
+              <div class="timer-inner"><span id="timer-num">30</span><small>秒</small></div>
+            </div>
+          </div>
+
+          <div class="top-right">
+            <button class="icon-btn" id="btn-fullscreen" title="全屏模式" aria-label="全屏模式">
+              <svg class="icon-fs-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+              <svg class="icon-fs-exit hidden" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+            </button>
+            <button class="icon-btn" id="btn-help" title="玩法说明" aria-label="玩法说明">?</button>
+            <button class="icon-btn" id="btn-sound" title="音效开关" aria-label="音效开关">
+              <svg class="icon-sound-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
+              <svg class="icon-sound-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="wave" d="m16 9 5 6m0-6-5 6"/></svg>
+            </button>
+            <button class="icon-btn" id="btn-pause" title="暂停" aria-label="暂停">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h3v14H8zm5 0h3v14h-3z"/></svg>
+            </button>
+          </div>
+
+          <div id="toast-area" aria-live="polite"></div>
+          <div id="kill-feed"></div>
+
+          <div id="turn-banner" class="turn-banner">
+            <div class="turn-banner-line"></div>
+            <span id="turn-banner-text">你的回合</span>
+            <div class="turn-banner-line"></div>
+          </div>
+
+          <div class="bottom-left">
+            <div class="weapon-bar" id="weapon-bar"></div>
+            <div class="move-panel" id="move-panel">
+              <button class="move-btn" id="move-left" aria-label="向左移动">
+                <svg viewBox="0 0 24 24"><path d="m14.5 5-7 7 7 7"/></svg>
+              </button>
+              <div class="fuel-wrap">
+                <div class="fuel-label"><span>移动力</span><span id="fuel-value">100</span></div>
+                <div class="fuel-track"><div class="fuel-fill" id="fuel-fill"></div></div>
+              </div>
+              <button class="move-btn" id="move-right" aria-label="向右移动">
+                <svg viewBox="0 0 24 24"><path d="m9.5 5 7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="bottom-right">
+            <div class="aim-readout">
+              <div class="readout-cell"><span class="readout-label">角度</span><strong id="angle-value">45°</strong></div>
+              <div class="readout-divider"></div>
+              <div class="readout-cell"><span class="readout-label">力度</span><strong id="power-value">60</strong></div>
+              <div class="power-track"><div class="power-fill" id="power-fill"></div></div>
+            </div>
+            <button id="btn-fire" class="fire-btn">
+              <span class="fire-btn-glow"></span>
+              <span class="fire-btn-label">开炮</span>
+              <span class="fire-btn-sub">FIRE</span>
+            </button>
+            <div class="control-hint" id="control-hint">按住向后拖拽 · 松手开炮</div>
+          </div>
+
+          <div id="sync-pill" class="sync-pill hidden">正在与对手同步…</div>
+          <div id="tutorial-hint" class="tutorial-hint hidden">
+            <div class="mouse-icon"><span></span></div>
+            <div><strong>按住画面，向反方向拖动</strong><br />拖得越远，力度越大；松手发射。</div>
+          </div>
+        </div>
+
+        <section id="menu" class="screen menu-screen">
+          <div class="menu-topbar">
+            <div class="brand-mini"><span class="brand-ball"></span> DDT · FAN REMAKE</div>
+            <div class="menu-top-actions">
+              <button class="icon-btn light" id="menu-fullscreen-btn" title="全屏模式" aria-label="全屏模式">
+                <svg class="icon-fs-enter" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+                <svg class="icon-fs-exit hidden" viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+              </button>
+              <button class="text-btn" id="menu-help-btn">玩法说明</button>
+              <button class="icon-btn light" id="menu-sound-btn" aria-label="音效开关">
+                <svg class="icon-sound-on" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
+                <svg class="icon-sound-off" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path class="wave" d="m16 9 5 6m0-6-5 6"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="menu-hero">
+            <div class="logo-wrap">
+              <div class="eyebrow"><span></span>童年弹道对战 · 复刻版<span></span></div>
+              <h1 class="logo"><span>弹</span><span>弹</span><span>堂</span></h1>
+              <div class="logo-sub"><i>风</i>之<i>物</i>语</div>
+              <p class="tagline">拉满弓弦，算准风向，把快乐打出去。</p>
+            </div>
+
+            <div class="menu-side-note">
+              <div class="wind-note">
+                <span class="wind-note-kicker">今日战报</span>
+                <div class="wind-note-main"><span id="menu-wind-arrow">→</span> <b id="menu-wind-value">3.2</b> <small>m/s</small></div>
+                <span class="wind-note-sub">风向每回合都会改变</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mode-grid">
+            <button class="mode-card mode-solo" data-mode="solo">
+              <span class="mode-icon">
+                <svg viewBox="0 0 48 48"><path d="M24 7 8 16v10c0 9.5 6.7 16 16 19 9.3-3 16-9.5 16-19V16L24 7z"/><path d="M24 16v13M18 22h12"/><circle cx="24" cy="34" r="1"/></svg>
+              </span>
+              <span class="mode-copy"><strong>单人挑战</strong><small>你 + AI 队友 VS 两名 AI · 2v2</small></span>
+              <span class="mode-arrow">→</span>
+            </button>
+            <button class="mode-card" data-mode="local">
+              <span class="mode-icon">
+                <svg viewBox="0 0 48 48"><circle cx="17" cy="17" r="7"/><circle cx="33" cy="19" r="5.5"/><path d="M6 38c0-6.5 5-11 11-11s11 4.5 11 11M26 38c0-5 3-8.5 7-8.5s7 3.5 7 8.5"/></svg>
+              </span>
+              <span class="mode-copy"><strong>本地双人</strong><small>同一台电脑，四人轮流开炮</small></span>
+              <span class="mode-arrow">→</span>
+            </button>
+            <button class="mode-card mode-online" data-mode="online">
+              <span class="mode-icon">
+                <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="17"/><path d="M7 24h34M24 7c5 5 7.5 10.5 7.5 17S29 36 24 41c-5-5-7.5-10.5-7.5-17S19 12 24 7z"/></svg>
+              </span>
+              <span class="mode-copy"><strong>联机对战</strong><small>创建房间码，和远方好友 1v1</small></span>
+              <span class="mode-arrow">→</span>
+            </button>
+          </div>
+
+          <div class="menu-footer">
+            <div class="menu-footer-desktop">
+              <span><kbd>拖拽</kbd> 瞄准 &amp; 蓄力</span>
+              <span><kbd>A</kbd><kbd>D</kbd> 移动</span>
+              <span><kbd>空格</kbd> 蓄力开炮</span>
+              <span><kbd>1</kbd>–<kbd>4</kbd> 切换炮弹</span>
+            </div>
+            <div class="menu-footer-mobile">
+              <span>📱 推荐横屏游玩</span>
+              <span>🎯 拖拽反向拉弓蓄力</span>
+              <span>🕹️ 底部按钮走位</span>
+              <span>💥 点击武器图标换弹</span>
+            </div>
+          </div>
+          <div class="menu-credit">非官方同人复刻 · 所有美术与音效均为原创程序化生成</div>
+        </section>
+
+        <section id="online-screen" class="screen modal-screen hidden">
+          <div class="dialog online-dialog">
+            <button class="dialog-close" id="online-close" aria-label="关闭">×</button>
+            <div class="dialog-kicker">ONLINE BATTLE</div>
+            <h2>联机对战</h2>
+            <p class="dialog-sub">和好友输入同一个房间码，来一场 1v1 对决。</p>
+
+            <div id="nickname-field">
+              <label class="field-label" for="nickname">你的昵称</label>
+              <input id="nickname" class="text-field" maxlength="10" placeholder="给自己起个名字" value="" />
+            </div>
+
+            <div class="online-actions" id="online-actions">
+              <button class="primary-btn" id="btn-create-room">创建房间</button>
+              <div class="or-line"><span>或</span></div>
+              <div class="join-row">
+                <input id="room-code-input" class="text-field code-field" maxlength="4" inputmode="numeric" placeholder="房间码" />
+                <button class="secondary-btn" id="btn-join-room">加入</button>
+              </div>
+            </div>
+
+            <div class="room-panel hidden" id="room-panel">
+              <div class="room-code-label">房间码</div>
+              <div class="room-code" id="room-code">----</div>
+              <button class="copy-btn" id="btn-copy-code">复制房间码</button>
+              <div class="room-players">
+                <div class="room-player you" id="room-player-0"><span class="room-dot" id="room-dot-0"></span><strong id="room-name-0">你</strong><small id="room-state-0">已就位</small></div>
+                <div class="room-vs">VS</div>
+                <div class="room-player" id="room-player-1"><span class="room-dot" id="room-dot-1"></span><strong id="room-name-1">等待好友…</strong><small id="room-state-1">房间码已生成</small></div>
+              </div>
+              <div class="room-status" id="room-status">等待好友加入…</div>
+              <button class="primary-btn" id="btn-start-online" disabled>开始对战</button>
+            </div>
+
+            <div class="online-status" id="online-status">正在准备联机服务…</div>
+            <div class="online-error hidden" id="online-error"></div>
+            <button class="text-btn back-btn" id="online-back">← 返回大厅</button>
+          </div>
+        </section>
+
+        <section id="over-screen" class="screen modal-screen hidden">
+          <div class="dialog result-dialog">
+            <div class="result-confetti" id="result-confetti"></div>
+            <div class="result-kicker" id="result-kicker">BATTLE OVER</div>
+            <h2 class="result-title" id="result-title">红队胜利！</h2>
+            <p class="result-sub" id="result-sub">漂亮的一炮！</p>
+            <div class="result-stats" id="result-stats"></div>
+            <div class="result-actions">
+              <button class="primary-btn" id="btn-rematch">再来一局</button>
+              <button class="secondary-btn" id="btn-result-menu">返回大厅</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="pause-screen" class="screen modal-screen hidden">
+          <div class="dialog pause-dialog">
+            <div class="dialog-kicker">PAUSED</div>
+            <h2>稍微喘口气</h2>
+            <p class="dialog-sub">风向不会等你，但好友会。</p>
+            <div class="pause-actions">
+              <button class="primary-btn" id="btn-resume">继续战斗</button>
+              <button class="secondary-btn" id="btn-restart">重新开始</button>
+              <button class="ghost-btn" id="btn-quit">返回大厅</button>
+            </div>
+            <div class="pause-note" id="pause-note">按 Esc 也可以继续</div>
+          </div>
+        </section>
+
+        <section id="help-modal" class="screen modal-screen hidden">
+          <div class="dialog help-dialog">
+            <button class="dialog-close" id="help-close" aria-label="关闭">×</button>
+            <div class="dialog-kicker">HOW TO PLAY</div>
+            <h2>怎么玩</h2>
+            <div class="help-grid">
+              <div class="help-step"><span>01</span><h3>反向拖拽</h3><p>按住画面，朝炮弹飞行的<strong>反方向</strong>拖动。拖得越远，力度越大；松手发射。</p></div>
+              <div class="help-step"><span>02</span><h3>算准风与角度</h3><p>顶部显示每回合的风向和风速。顺风打得更远，逆风要抬高角度。45° 通常射程最远。</p></div>
+              <div class="help-step"><span>03</span><h3>移动与换弹</h3><p><kbd>A</kbd>/<kbd>D</kbd> 在回合内移动，消耗移动力。按 <kbd>1</kbd>–<kbd>4</kbd> 或点击卡片切换炮弹。</p></div>
+              <div class="help-step"><span>04</span><h3>团队轮换</h3><p>红蓝两队交替出手。击倒对方全部成员即可获胜。爆炸也会伤到自己，注意距离。</p></div>
+            </div>
+            <div class="weapon-help" id="weapon-help"></div>
+            <div class="help-footer"><span>30 秒回合倒计时</span><span>提示：空格键也能蓄力开炮</span></div>
+          </div>
+        </section>
+
+        <div id="fade" class="fade"></div>
+        </div>
+      </div>
+
+      <!-- 移动端横屏提示遮罩 -->
+      <div id="orientation-overlay" class="orientation-overlay hidden" aria-live="assertive">
+        <div class="orient-card">
+          <div class="phone-anim-box">
+            <div class="phone-device">
+              <div class="phone-notch"></div>
+              <div class="phone-screen">
+                <div class="phone-game-preview">
+                  <span class="preview-arc"></span>
+                  <span class="preview-bomb"></span>
+                </div>
+              </div>
+            </div>
+            <div class="orient-arrow-ring">
+              <svg viewBox="0 0 48 48"><path d="M12 24 A 12 12 0 0 1 36 24" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="4 2"/><path d="M33 18 L38 24 L32 28" fill="currentColor"/></svg>
+            </div>
+          </div>
+          <h2 class="orient-title">请旋转手机横屏游玩</h2>
+          <p class="orient-desc">《弹弹堂 · 风之物语》专为横屏设计。旋转手机即可展开全景战场，享受更舒适的触控手感！</p>
+          <div class="orient-actions">
+            <button id="btn-orient-fullscreen" class="orient-btn primary">
+              <svg viewBox="0 0 24 24"><path d="M3 3h6v2H5v4H3V3zm18 0v6h-2V5h-4V3h6zm0 18h-6v-2h4v-4h2v6zM3 21v-6h2v4h4v2H3z"/></svg>
+              一键横屏全屏
+            </button>
+            <button id="btn-orient-force" class="orient-btn secondary">
+              <svg viewBox="0 0 24 24"><path d="M16.48 2.52c3.27 1.55 5.61 4.72 5.97 8.48h1.5C23.44 4.84 18.29 0 12 0l-.66.03 3.81 3.81 1.33-1.32zM7.52 21.48C4.25 19.93 1.91 16.76 1.55 13H.05C.56 19.16 5.71 24 12 24l.66-.03-3.81-3.81-1.33 1.32z"/></svg>
+              强制横向显示
+            </button>
+          </div>
+          <div class="orient-tip">提示：若屏幕未旋转，请检查控制中心是否锁定了「竖排方向」</div>
+          <button id="btn-orient-ignore" class="orient-ignore-btn">暂不旋转，直接游玩</button>
+        </div>
+      </div>
+
+      <!-- 退出强制横屏浮动按钮 -->
+      <button id="btn-exit-force-landscape" class="exit-force-landscape-btn hidden" title="退出强制横屏">
+        <svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        <span>恢复竖屏</span>
+      </button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
