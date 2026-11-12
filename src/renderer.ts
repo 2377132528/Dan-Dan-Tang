@@ -418,19 +418,65 @@ export class Renderer {
       }
       case 'damage': {
         const color = event.kind === 'fall' ? '#ffe4a1' : '#ff6d6d';
-        this.floaters.push({
-          x: event.x + (Math.random() * 16 - 8),
-          y: event.y,
-          vy: -44,
-          life: 1.1,
-          maxLife: 1.1,
-          text: `-${event.amount}`,
-          color,
-          size: event.amount >= 40 ? 27 : 21,
-        });
+        if (event.absorbed && event.absorbed > 0) {
+          this.floaters.push({
+            x: event.x - 12,
+            y: event.y - 18,
+            vy: -32,
+            life: 1.1,
+            maxLife: 1.1,
+            text: `护盾 -${event.absorbed}`,
+            color: '#74c0fc',
+            size: 19,
+          });
+        }
+        if (event.amount > 0) {
+          this.floaters.push({
+            x: event.x + (Math.random() * 16 - 8),
+            y: event.y,
+            vy: -44,
+            life: 1.1,
+            maxLife: 1.1,
+            text: `-${event.amount}`,
+            color,
+            size: event.amount >= 40 ? 27 : 21,
+          });
+        }
         const fx = this.fxFor(event.playerId);
         fx.hit = 0.5;
         this.addShake(event.amount >= 30 ? 4 : 1.6);
+        break;
+      }
+      case 'pow': {
+        this.addShake(8);
+        this.flash = 0.45;
+        this.spawnPowBurst(event.playerId);
+        break;
+      }
+      case 'shield': {
+        this.spawnShieldFx(event.playerId);
+        break;
+      }
+      case 'teleport': {
+        this.spawnTeleportFx(event.fromX, event.fromY, event.toX, event.toY);
+        break;
+      }
+      case 'crateCollect': {
+        this.spawnCrateCollectFx(event.playerId, event.text);
+        break;
+      }
+      case 'crit': {
+        this.addShake(6.5);
+        this.floaters.push({
+          x: event.x,
+          y: event.y,
+          vy: -52,
+          life: 1.35,
+          maxLife: 1.35,
+          text: event.text,
+          color: '#ffd166',
+          size: 32,
+        });
         break;
       }
       case 'death': {
@@ -509,6 +555,7 @@ export class Renderer {
     this.drawScorches();
     if (!this.menuMode) this.drawAimGuide(game);
     this.drawTombstones(game);
+    this.drawCrates(game);
     this.drawPlayers(game);
     this.drawProjectiles(game);
     this.drawParticles();
@@ -1151,6 +1198,93 @@ export class Renderer {
     }
   }
 
+  private drawCrates(game: Game): void {
+    const ctx = this.ctx;
+    const t = this.time;
+    for (const crate of game.crates) {
+      ctx.save();
+      ctx.translate(crate.x, crate.y);
+
+      // 空中降落伞
+      if (!crate.grounded) {
+        const sway = Math.sin(t * 4 + crate.id) * 0.12;
+        ctx.rotate(sway);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-16, -36);
+        ctx.lineTo(-8, -12);
+        ctx.moveTo(16, -36);
+        ctx.lineTo(8, -12);
+        ctx.moveTo(0, -38);
+        ctx.lineTo(0, -12);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ff6b6b';
+        ctx.beginPath();
+        ctx.arc(0, -38, 24, Math.PI, 0);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#fff9eb';
+        ctx.beginPath();
+        ctx.moveTo(-8, -38);
+        ctx.quadraticCurveTo(0, -56, 8, -38);
+        ctx.quadraticCurveTo(0, -42, -8, -38);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = '#c94653';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, -38, 24, Math.PI, 0);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = 'rgba(28, 43, 44, 0.25)';
+        ctx.beginPath();
+        ctx.ellipse(0, 10, 18, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 木箱
+      ctx.fillStyle = '#b97a55';
+      ctx.fillRect(-12, -11, 24, 22);
+
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-12, -11, 24, 22);
+
+      ctx.strokeStyle = '#8b5541';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-12, 0);
+      ctx.lineTo(12, 0);
+      ctx.stroke();
+
+      const pulse = 1 + Math.sin(t * 6 + crate.id) * 0.15;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `${Math.round(13 * pulse)}px sans-serif`;
+      let symbol = '🎁';
+      if (crate.kind === 'heal') symbol = '💖';
+      else if (crate.kind === 'rage') symbol = '⚡';
+      else if (crate.kind === 'ammo') symbol = '💣';
+      else if (crate.kind === 'prop') symbol = '✈️';
+      ctx.fillText(symbol, 0, 0);
+
+      if (crate.grounded) {
+        ctx.strokeStyle = 'rgba(255, 209, 102, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, 18 + Math.sin(t * 3 + crate.id) * 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  }
+
   private drawPlayer(player: Player, game: Game): void {
     const char = CHARACTERS[player.charId] ?? CHARACTERS.tuantuan;
     const ctx = this.ctx;
@@ -1193,6 +1327,29 @@ export class Renderer {
       ctx.fillStyle = teamColor;
       ctx.fill();
       ctx.globalAlpha = 1;
+    }
+
+    // POW 怒气烈焰升腾
+    if (player.isPow) {
+      const powPulse = 1 + Math.sin(t * 8) * 0.14;
+      const powGlow = ctx.createRadialGradient(0, -28, 4, 0, -28, 46 * powPulse);
+      powGlow.addColorStop(0, 'rgba(255, 215, 0, 0.45)');
+      powGlow.addColorStop(0.5, 'rgba(255, 90, 40, 0.35)');
+      powGlow.addColorStop(1, 'rgba(255, 40, 40, 0)');
+      ctx.fillStyle = powGlow;
+      ctx.beginPath();
+      ctx.arc(0, -28, 46 * powPulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 2.4;
+      for (let i = -2; i <= 2; i++) {
+        const flameH = 22 + Math.sin(t * 12 + i * 2) * 12;
+        ctx.beginPath();
+        ctx.moveTo(i * 9, 0);
+        ctx.quadraticCurveTo(i * 12 + Math.sin(t * 10 + i) * 6, -flameH * 0.6, i * 7, -flameH);
+        ctx.stroke();
+      }
     }
 
     ctx.translate(jitterX - player.facing * recoil * 0.5, bob + jitterY);
@@ -1439,6 +1596,32 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    // 能量护盾光球
+    if (player.shield > 0) {
+      ctx.save();
+      ctx.translate(player.x, player.y - 30);
+      const shieldPulse = 1 + Math.sin(t * 5 + player.id) * 0.05;
+      ctx.strokeStyle = 'rgba(77, 171, 247, 0.85)';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 36 * shieldPulse, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const shieldGrad = ctx.createRadialGradient(0, 0, 8, 0, 0, 36 * shieldPulse);
+      shieldGrad.addColorStop(0, 'rgba(116, 192, 252, 0.05)');
+      shieldGrad.addColorStop(0.7, 'rgba(77, 171, 247, 0.16)');
+      shieldGrad.addColorStop(1, 'rgba(77, 171, 247, 0.32)');
+      ctx.fillStyle = shieldGrad;
+      ctx.fill();
+
+      ctx.fillStyle = '#fff';
+      ctx.font = "900 10px 'Microsoft YaHei UI', sans-serif";
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`🛡️${player.shield}`, 0, -42);
+      ctx.restore();
+    }
 
     // Nameplate and HP bar above the character.
     ctx.save();
@@ -1760,6 +1943,47 @@ export class Renderer {
     ctx.rotate(angle);
     ctx.shadowColor = weapon.glow;
     ctx.shadowBlur = 9;
+
+    if (projectile.isTeleport) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(14, 0);
+      ctx.lineTo(-12, -9);
+      ctx.lineTo(-6, 0);
+      ctx.lineTo(-12, 9);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(100, 116, 139, 0.45)';
+      ctx.beginPath();
+      ctx.moveTo(14, 0);
+      ctx.lineTo(-6, 0);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    if (projectile.isPow) {
+      ctx.fillStyle = '#ffd166';
+      ctx.beginPath();
+      ctx.arc(0, 0, 15, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#ff6b6b';
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff9eb';
+      ctx.beginPath();
+      ctx.arc(0, 0, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
 
     if (projectile.weapon === 'heal') {
       const pulse = 1 + Math.sin(this.time * 8 + projectile.id) * 0.12;
@@ -2415,6 +2639,97 @@ export class Renderer {
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  private spawnRing(x: number, y: number, maxRadius: number, color: string, life = 0.45): void {
+    this.rings.push({
+      x,
+      y,
+      radius: 4,
+      maxRadius,
+      life,
+      maxLife: life,
+      color,
+      width: 2.5,
+    });
+  }
+
+  private spawnPowBurst(playerId: number): void {
+    const player = this.game?.players.find((p) => p.id === playerId);
+    if (!player) return;
+    this.spawnRing(player.x, player.y - 30, 80, '#ffd166', 0.45);
+    for (let i = 0; i < 20; i++) {
+      this.addParticle({
+        x: player.x,
+        y: player.y - 20,
+        vx: (Math.random() - 0.5) * 160,
+        vy: -Math.random() * 200 - 60,
+        life: 0.8,
+        maxLife: 0.8,
+        color: i % 2 === 0 ? '#ffd166' : '#ff6b6b',
+        size: Math.random() * 4 + 3,
+        type: 'spark',
+        gravity: 120,
+        drag: 1,
+        rotation: 0,
+        spin: 0,
+      });
+    }
+  }
+
+  private spawnShieldFx(playerId: number): void {
+    const player = this.game?.players.find((p) => p.id === playerId);
+    if (!player) return;
+    this.spawnRing(player.x, player.y - 30, 50, '#4dabf7', 0.5);
+    this.floaters.push({
+      x: player.x,
+      y: player.y - 50,
+      vy: -40,
+      life: 1.2,
+      maxLife: 1.2,
+      text: '🛡️ 能量护盾 +35',
+      color: '#74c0fc',
+      size: 20,
+    });
+  }
+
+  private spawnTeleportFx(fromX: number, fromY: number, toX: number, toY: number): void {
+    this.spawnRing(fromX, fromY - 24, 45, '#38bdf8', 0.4);
+    this.spawnRing(toX, toY - 24, 60, '#38bdf8', 0.5);
+    this.addShake(3.5);
+    for (let i = 0; i < 16; i++) {
+      this.addParticle({
+        x: toX,
+        y: toY - 20,
+        vx: (Math.random() - 0.5) * 120,
+        vy: (Math.random() - 0.5) * 120,
+        life: 0.6,
+        maxLife: 0.6,
+        color: '#74c0fc',
+        size: 3,
+        type: 'spark',
+        gravity: 0,
+        drag: 1,
+        rotation: 0,
+        spin: 0,
+      });
+    }
+  }
+
+  private spawnCrateCollectFx(playerId: number, text: string): void {
+    const player = this.game?.players.find((p) => p.id === playerId);
+    if (!player) return;
+    this.spawnRing(player.x, player.y - 30, 55, '#ffd166', 0.4);
+    this.floaters.push({
+      x: player.x,
+      y: player.y - 54,
+      vy: -46,
+      life: 1.4,
+      maxLife: 1.4,
+      text: `🎁 ${text}`,
+      color: '#ffe066',
+      size: 22,
+    });
   }
 }
 

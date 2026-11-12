@@ -1,4 +1,4 @@
-import type { CharacterDef, Team, WeaponDef, WeaponId } from './types';
+import type { CharacterDef, PropId, Team, WeaponDef, WeaponId } from './types';
 
 export const CHARACTERS: Record<string, CharacterDef> = {
   tuantuan: {
@@ -154,3 +154,59 @@ export const WEAPON_ICON_SVG: Record<string, string> = {
   heavy: `<svg viewBox="0 0 32 32" aria-hidden="true"><circle class="ic-fill" cx="16" cy="18" r="9"/><path class="ic-line" d="M16 18c0-5 2-9 6-10M12 9l-3-4M24 13l4-1"/><path class="ic-line" d="m22 4 3-2 2 2-2 3z"/></svg>`,
   heal: `<svg viewBox="0 0 32 32" aria-hidden="true"><path class="ic-fill" d="M16 6c6 3 10 7 10 12a10 10 0 0 1-20 0c0-5 4-9 10-12z"/><path class="ic-line" d="M16 11v12M10 17h12"/></svg>`,
 };
+
+export interface PropDef {
+  id: PropId;
+  name: string;
+  short: string;
+  description: string;
+  count: number;
+  fuelCost: number;
+  color: string;
+  iconSvg: string;
+}
+
+export const PROPS: Record<PropId, PropDef> = {
+  teleport: {
+    id: 'teleport',
+    name: '传送飞机',
+    short: '飞机',
+    description: '射出一架纸飞机，瞬间传送到落点，绝地脱困必备。',
+    count: 2,
+    fuelCost: 20,
+    color: '#4dabf7',
+    iconSvg: `<svg viewBox="0 0 24 24"><path fill="currentColor" d="m2.01 21 20.99-9L2.01 3 2 10l15 2-15 2z"/></svg>`,
+  },
+  double: {
+    id: 'double',
+    name: '双发连击',
+    short: '双发',
+    description: '本回合连续打出两枚炮弹，火力瞬间翻倍！',
+    count: 2,
+    fuelCost: 25,
+    color: '#ffd166',
+    iconSvg: `<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2 4 14h6v8l8-12h-6z"/></svg>`,
+  },
+  boost: {
+    id: 'boost',
+    name: '威力+50%',
+    short: '强击',
+    description: '为下一次发射注入超能火药，威力增加50%，炸坑更大。',
+    count: 2,
+    fuelCost: 25,
+    color: '#ff6b6b',
+    iconSvg: `<svg viewBox="0 0 24 24"><path fill="currentColor" d="M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z"/></svg>`,
+  },
+  shield: {
+    id: 'shield',
+    name: '能量护盾',
+    short: '护盾',
+    description: '生成一层抵御35点伤害的光能球形护盾。',
+    count: 2,
+    fuelCost: 20,
+    color: '#8ee6c8',
+    iconSvg: `<svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 2.18 7 3.12v4.7c0 4.67-3.13 8.96-7 10.02-3.87-1.06-7-5.35-7-10.02V6.3l7-3.12z"/></svg>`,
+  },
+};
+
+export const PROP_ORDER: PropId[] = ['teleport', 'double', 'boost', 'shield'];

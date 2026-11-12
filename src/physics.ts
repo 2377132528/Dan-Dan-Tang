@@ -36,16 +36,19 @@ export function bodyRadius(): number {
 }
 
 export function projectileStep(p: Projectile, wind: number, dt: number): void {
-  p.vy += GRAVITY * dt;
+  const g = p.isTeleport ? GRAVITY * 0.72 : GRAVITY;
+  p.vy += g * dt;
   p.vx += wind * WIND_ACCEL * dt;
   p.x += p.vx * dt;
   p.y += p.vy * dt;
   p.life += dt;
   p.trailTimer += dt;
-  if (p.trailTimer >= 0.025) {
+  const trailInterval = p.isPow ? 0.016 : 0.025;
+  if (p.trailTimer >= trailInterval) {
     p.trailTimer = 0;
     p.trail.push({ x: p.x, y: p.y });
-    if (p.trail.length > 28) p.trail.shift();
+    const maxTrail = p.isPow ? 42 : 28;
+    if (p.trail.length > maxTrail) p.trail.shift();
   }
 }
 

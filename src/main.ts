@@ -197,6 +197,22 @@ function playEventSound(event: GameEvent): void {
     case 'timeout':
       sound.play('tick');
       break;
+    case 'pow':
+      sound.play('pow');
+      break;
+    case 'crateSpawn':
+    case 'crateCollect':
+      sound.play('crate');
+      break;
+    case 'teleport':
+      sound.play('teleport');
+      break;
+    case 'shield':
+      sound.play('shield');
+      break;
+    case 'crit':
+      sound.play('crit');
+      break;
     default:
       break;
   }
@@ -515,6 +531,20 @@ ui.onWeapon = (weapon) => {
     ui.sync(game, false);
   }
 };
+ui.onProp = (prop) => {
+  if (!game || paused || resultShown) return;
+  if (game.useProp(prop)) {
+    sound.play(prop === 'shield' ? 'shield' : 'ui');
+    ui.sync(game, false);
+  }
+};
+ui.onPowToggle = () => {
+  if (!game || paused || resultShown) return;
+  if (game.togglePow()) {
+    sound.play('pow');
+    ui.sync(game, false);
+  }
+};
 ui.onHelpOpen = () => {
   if (!game) return;
   cancelDrag();
@@ -716,6 +746,47 @@ window.addEventListener('keydown', (event) => {
   }
 
   if (!game.canLocalControl() || game.phase !== 'aim') return;
+
+  if (key === 'q') {
+    if (game.useProp('teleport')) {
+      sound.play('ui');
+      ui.sync(game, false);
+    }
+    event.preventDefault();
+    return;
+  }
+  if (key === 'e') {
+    if (game.useProp('double')) {
+      sound.play('ui');
+      ui.sync(game, false);
+    }
+    event.preventDefault();
+    return;
+  }
+  if (key === 'r') {
+    if (game.useProp('boost')) {
+      sound.play('ui');
+      ui.sync(game, false);
+    }
+    event.preventDefault();
+    return;
+  }
+  if (key === 't') {
+    if (game.useProp('shield')) {
+      sound.play('shield');
+      ui.sync(game, false);
+    }
+    event.preventDefault();
+    return;
+  }
+  if (key === 'b' || key === 'p') {
+    if (game.togglePow()) {
+      sound.play('pow');
+      ui.sync(game, false);
+    }
+    event.preventDefault();
+    return;
+  }
 
   if (key === 'a' || event.key === 'ArrowLeft') {
     game.setMoveDirection(-1);

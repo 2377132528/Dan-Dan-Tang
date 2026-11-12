@@ -1,7 +1,17 @@
 export type Team = 'red' | 'blue';
 export type WeaponId = 'standard' | 'triple' | 'heavy' | 'heal';
+export type PropId = 'teleport' | 'double' | 'boost' | 'shield';
 export type GameMode = 'solo' | 'local' | 'online';
 export type Phase = 'aim' | 'flying' | 'resolving' | 'waiting' | 'gameover';
+
+export interface Crate {
+  id: number;
+  x: number;
+  y: number;
+  vy: number;
+  grounded: boolean;
+  kind: 'heal' | 'rage' | 'ammo' | 'prop';
+}
 
 export interface CharacterDef {
   id: string;
@@ -49,6 +59,8 @@ export interface Player {
   fallStart: number;
   hp: number;
   maxHp: number;
+  shield: number;
+  rage: number;
   fuel: number;
   alive: boolean;
   angle: number;
@@ -56,6 +68,9 @@ export interface Player {
   facing: 1 | -1;
   weapon: WeaponId;
   ammo: Record<WeaponId, number>;
+  props: Record<PropId, number>;
+  activeProps: PropId[];
+  isPow: boolean;
   damageDealt: number;
   shots: number;
   hits: number;
@@ -71,6 +86,9 @@ export interface Shot {
   weapon: WeaponId;
   x: number;
   y: number;
+  isPow?: boolean;
+  isTeleport?: boolean;
+  isBoosted?: boolean;
 }
 
 export interface Projectile {
@@ -85,6 +103,9 @@ export interface Projectile {
   trail: { x: number; y: number }[];
   trailTimer: number;
   dead: boolean;
+  isPow?: boolean;
+  isTeleport?: boolean;
+  isBoosted?: boolean;
 }
 
 export interface ExplosionInfo {
@@ -94,6 +115,7 @@ export interface ExplosionInfo {
   weapon: WeaponId;
   playerId: number;
   team: Team;
+  isPow?: boolean;
 }
 
 export type GameEvent =
@@ -102,7 +124,7 @@ export type GameEvent =
   | { type: 'fire'; playerId: number; shot: Shot }
   | { type: 'explosion'; info: ExplosionInfo }
   | { type: 'heal'; x: number; y: number; radius: number; playerId: number; team: Team }
-  | { type: 'damage'; playerId: number; amount: number; x: number; y: number; kind: 'damage' | 'fall'; sourceId?: number }
+  | { type: 'damage'; playerId: number; amount: number; x: number; y: number; kind: 'damage' | 'fall'; sourceId?: number; absorbed?: number }
   | { type: 'death'; playerId: number; x: number; y: number; team: Team; reason: 'damage' | 'fall' }
   | { type: 'moved'; playerId: number; x: number; y: number }
   | { type: 'moveStart'; playerId: number }
@@ -112,7 +134,13 @@ export type GameEvent =
   | { type: 'gameover'; winner: Team | null; stats: PlayerStats[] }
   | { type: 'timeout'; playerId: number }
   | { type: 'message'; text: string }
-  | { type: 'waiting'; reason: 'sync' | 'opponent' };
+  | { type: 'waiting'; reason: 'sync' | 'opponent' }
+  | { type: 'pow'; playerId: number }
+  | { type: 'shield'; playerId: number; amount: number }
+  | { type: 'teleport'; playerId: number; fromX: number; fromY: number; toX: number; toY: number }
+  | { type: 'crateSpawn'; crate: Crate }
+  | { type: 'crateCollect'; crateId: number; playerId: number; text: string; kind: string }
+  | { type: 'crit'; x: number; y: number; text: string; bonus: number };
 
 export interface PlayerStats {
   id: number;
@@ -133,6 +161,8 @@ export interface Snapshot {
     x: number;
     y: number;
     hp: number;
+    shield?: number;
+    rage?: number;
     alive: boolean;
     ammo: Record<WeaponId, number>;
     damageDealt: number;

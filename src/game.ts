@@ -1,4 +1,4 @@
-import { CHARACTERS, ORDER_1V1, ORDER_2V2, WEAPONS } from './data';
+import { CHARACTERS, ORDER_1V1, ORDER_2V2, PROPS, PROP_ORDER, WEAPONS } from './data';
 import { Rng, clamp, dist } from './math';
 import {
   GRAVITY,
@@ -13,6 +13,7 @@ import {
 } from './physics';
 import { TERRAIN_MAX, Terrain } from './terrain';
 import type {
+  Crate,
   ExplosionInfo,
   GameEvent,
   GameMode,
@@ -21,6 +22,7 @@ import type {
   Player,
   PlayerStats,
   Projectile,
+  PropId,
   Shot,
   Snapshot,
   Team,
@@ -47,13 +49,17 @@ export class Game {
   timer = 30;
   winner: Team | null = null;
   projectiles: Projectile[] = [];
+  crates: Crate[] = [];
   onEvent: ((event: GameEvent) => void) | null = null;
 
   private rng: Rng;
   private projectileSeq = 1;
+  private crateSeq = 1;
   private moveDir: -1 | 0 | 1 = 0;
   private physicsAcc = 0;
   private settleTimer = 0;
+  private secondShotTimer = 0;
+  private pendingSecondShot: { player: Player; shot: Shot } | null = null;
   private gameOverEmitted = false;
   private timeoutEmitted = false;
 
@@ -88,6 +94,12 @@ export class Game {
         heavy: WEAPONS.heavy.ammo ?? 0,
         heal: WEAPONS.heal.ammo ?? 0,
       };
+      const props: Record<PropId, number> = {
+        teleport: PROPS.teleport.count,
+        double: PROPS.double.count,
+        boost: PROPS.boost.count,
+        shield: PROPS.shield.count,
+      };
       return {
         id: index,
         charId: character.id,
@@ -102,6 +114,8 @@ export class Game {
         fallStart: this.terrain.heightAt(x),
         hp: maxHp,
         maxHp,
+        shield: 0,
+        rage: 0,
         fuel: 100,
         alive: true,
         angle: 45,
@@ -109,6 +123,9 @@ export class Game {
         facing: team === 'red' ? 1 : -1,
         weapon: 'standard',
         ammo,
+        props,
+        activeProps: [],
+        isPow: false,
         damageDealt: 0,
         shots: 0,
         hits: 0,
@@ -178,6 +195,10 @@ export class Game {
     this.activeIndex = playerId;
     player.fuel = 100;
     player.moving = false;
+    player.activeProps = [];
+    player.isPow = false;
+    // 回合开始自然微量充能怒气
+    player.rage = clamp(player.rage + 6, 0, 100);
     this.moveDir = 0;
     this.timer = this.turnTime;
     this.phase = 'aim';
@@ -194,6 +215,115 @@ export class Game {
         round: this.round,
       });
     }
+  }
+
+  togglePow(force = false): boolean {
+    const player = this.activePlayer;
+    if (!force && !this.canLocalControl(player)) return false;
+    if (this.phase !== 'aim') return false;
+    if (player.rage < 100 && !player.isPow) return false;
+    player.isPow = !player.isPow;
+    if (player.isPow) {
+      this.emit({ type: 'pow', playerId: player.id });
+      this.emit({ type: 'message', text: `${player.name} 怒气暴涌！POW 必杀已装填！` });
+    }
+    return true;
+  }
+
+  useProp(propId: PropId, force = false): boolean {
+    const player = this.activePlayer;
+    if (!force && !this.canLocalControl(player)) return false;
+    if (this.phase !== 'aim') return false;
+    const count = player.props[propId] ?? 0;
+    if (count <= 0) return false;
+    const def = PROPS[propId];
+    if (player.fuel < def.fuelCost) return false;
+
+    if (propId === 'shield') {
+      player.props[propId] -= 1;
+      player.fuel = Math.max(0, player.fuel - def.fuelCost);
+      player.shield = clamp(player.shield + 35, 0, 70);
+      this.emit({ type: 'shield', playerId: player.id, amount: 35 });
+      this.emit({ type: 'message', text: `${player.name} 开启了能量护盾 (+35)！` });
+      return true;
+    }
+
+    if (player.activeProps.includes(propId)) {
+      return false;
+    }
+
+    player.props[propId] -= 1;
+    player.fuel = Math.max(0, player.fuel - def.fuelCost);
+    player.activeProps.push(propId);
+    if (propId === 'teleport') {
+      this.emit({ type: 'message', text: `${player.name} 装备了纸飞机，落点将进行传送！` });
+    } else if (propId === 'double') {
+      this.emit({ type: 'message', text: `${player.name} 激活了双发连击，火力翻倍！` });
+    } else if (propId === 'boost') {
+      this.emit({ type: 'message', text: `${player.name} 注入了超能火药，威力+50%！` });
+    }
+    return true;
+  }
+
+  private maybeSpawnCrate(): void {
+    if (this.crates.length >= 3) return;
+    const x = this.rng.float(180, this.terrain.width - 180);
+    const kinds: Array<'heal' | 'rage' | 'ammo' | 'prop'> = ['heal', 'rage', 'ammo', 'prop'];
+    const kind = kinds[Math.floor(this.rng.float(0, kinds.length))];
+    const crate: Crate = {
+      id: this.crateSeq++,
+      x,
+      y: -30,
+      vy: 80,
+      grounded: false,
+      kind,
+    };
+    this.crates.push(crate);
+    this.emit({ type: 'crateSpawn', crate });
+    this.emit({ type: 'message', text: `战场空投了一只神秘补给箱！` });
+  }
+
+  private collectCrate(crate: Crate, player: Player): void {
+    this.crates = this.crates.filter((c) => c.id !== crate.id);
+    let bonusText = '';
+    switch (crate.kind) {
+      case 'heal': {
+        const healed = Math.min(40, player.maxHp - player.hp);
+        player.hp = Math.min(player.maxHp, player.hp + 40);
+        bonusText = `+${healed > 0 ? healed : 40} 生命回复`;
+        break;
+      }
+      case 'rage': {
+        player.rage = clamp(player.rage + 60, 0, 100);
+        player.fuel = 100;
+        bonusText = `怒气暴涨 +60% & 移动力回满`;
+        break;
+      }
+      case 'ammo': {
+        player.ammo.heavy = (player.ammo.heavy ?? 0) + 2;
+        player.ammo.triple = (player.ammo.triple ?? 0) + 2;
+        bonusText = `获得重锤弹×2 & 三连弹×2`;
+        break;
+      }
+      case 'prop': {
+        player.props.teleport = (player.props.teleport ?? 0) + 1;
+        player.props.double = (player.props.double ?? 0) + 1;
+        player.props.shield = (player.props.shield ?? 0) + 1;
+        bonusText = `获得纸飞机×1、双发×1、护盾×1`;
+        break;
+      }
+    }
+    this.emit({
+      type: 'crateCollect',
+      crateId: crate.id,
+      playerId: player.id,
+      text: bonusText,
+      kind: crate.kind,
+    });
+    this.emit({
+      type: 'message',
+      text: `${player.name} 打开了空投补给箱，获得了 [${bonusText}]！`,
+    });
   }
 
   setAim(angle: number, power: number, facing: 1 | -1, force = false): void {
@@ -276,13 +406,50 @@ export class Game {
     player.x = clamp(player.x + direction * 92 * dt, 48, this.terrain.width - 48);
     player.y = this.terrain.heightAt(player.x);
     player.facing = direction;
+
+    // 检查走动触碰空投箱
+    for (const crate of [...this.crates]) {
+      if (dist(player.x, player.y - 18, crate.x, crate.y) < 36) {
+        this.collectCrate(crate, player);
+      }
+    }
+
     if (player.fuel <= 0) {
       player.moving = false;
       this.emit({ type: 'moveEnd', playerId: player.id, x: player.x, y: player.y });
     }
   }
 
+  private updateCrates(dt: number): void {
+    for (const crate of this.crates) {
+      if (!crate.grounded) {
+        crate.y += crate.vy * dt;
+        const ground = this.terrain.heightAt(crate.x) - 14;
+        if (crate.y >= ground) {
+          crate.y = ground;
+          crate.grounded = true;
+        }
+      }
+    }
+  }
+
+  private updateSecondShot(dt: number): void {
+    if (this.secondShotTimer > 0) {
+      this.secondShotTimer -= dt;
+      if (this.secondShotTimer <= 0 && this.pendingSecondShot) {
+        const { player, shot } = this.pendingSecondShot;
+        this.pendingSecondShot = null;
+        if (player.alive) {
+          this.executeShot(player, shot);
+        }
+      }
+    }
+  }
+
   update(dt: number): void {
+    this.updateCrates(dt);
+    this.updateSecondShot(dt);
+
     if (this.phase === 'gameover') {
       this.updateFalling(dt);
       return;
@@ -360,7 +527,7 @@ export class Game {
           }
           if (hitPlayer) {
             projectile.dead = true;
-            this.explode(projectile.x, projectile.y, projectile.weapon, projectile.ownerId, true);
+            this.impactProjectile(projectile, true);
             continue;
           }
         }
@@ -368,7 +535,7 @@ export class Game {
         // Terrain collision.
         if (projectile.y >= this.terrain.heightAt(projectile.x)) {
           projectile.dead = true;
-          this.explode(projectile.x, projectile.y - 2, projectile.weapon, projectile.ownerId, false);
+          this.impactProjectile(projectile, false);
           continue;
         }
 
@@ -383,7 +550,7 @@ export class Game {
     }
 
     this.projectiles = this.projectiles.filter((projectile) => !projectile.dead);
-    if (this.projectiles.length === 0) {
+    if (this.projectiles.length === 0 && this.secondShotTimer <= 0) {
       this.phase = 'resolving';
       this.settleTimer = this.winner ? 1.4 : 1.05;
     }
@@ -476,7 +643,7 @@ export class Game {
     });
   }
 
-  private launchShot(player: Player, shot: Shot): void {
+  executeShot(player: Player, shot: Shot): void {
     const weapon = WEAPONS[shot.weapon];
     const ammo = player.ammo[shot.weapon];
     if (ammo !== undefined && ammo <= 0) return;
@@ -505,87 +672,204 @@ export class Game {
         trail: [],
         trailTimer: 0,
         dead: false,
+        isPow: shot.isPow,
+        isTeleport: shot.isTeleport,
+        isBoosted: shot.isBoosted,
       });
     }
 
     this.emit({ type: 'fire', playerId: player.id, shot });
   }
 
-  private explode(
-    x: number,
-    y: number,
-    weaponId: WeaponId,
-    ownerId: number,
-    directHit: boolean,
-  ): void {
-    const weapon = WEAPONS[weaponId];
-    const owner = this.getPlayer(ownerId);
+  private launchShot(player: Player, shot: Shot): void {
+    const isPow = player.isPow;
+    const isTeleport = player.activeProps.includes('teleport');
+    const isBoosted = player.activeProps.includes('boost');
+    const isDouble = player.activeProps.includes('double');
+
+    if (isPow) {
+      player.isPow = false;
+      player.rage = 0;
+    }
+    if (isTeleport) {
+      player.activeProps = player.activeProps.filter((p) => p !== 'teleport');
+    }
+    if (isBoosted) {
+      player.activeProps = player.activeProps.filter((p) => p !== 'boost');
+    }
+    if (isDouble) {
+      player.activeProps = player.activeProps.filter((p) => p !== 'double');
+      this.pendingSecondShot = {
+        player,
+        shot: { ...shot, isPow: false, isTeleport, isBoosted },
+      };
+      this.secondShotTimer = 0.25;
+    }
+
+    shot.isPow = isPow;
+    shot.isTeleport = isTeleport;
+    shot.isBoosted = isBoosted;
+
+    this.executeShot(player, shot);
+  }
+
+  private impactProjectile(p: Projectile, directHit: boolean): void {
+    const owner = this.getPlayer(p.ownerId);
     if (!owner) return;
+
+    // 纸飞机传送落点
+    if (p.isTeleport) {
+      const fromX = owner.x;
+      const fromY = owner.y;
+      const targetX = clamp(p.x, 48, this.terrain.width - 48);
+      const targetY = this.terrain.heightAt(targetX);
+      owner.x = targetX;
+      owner.y = targetY;
+      owner.vy = 0;
+      owner.onGround = true;
+      this.emit({
+        type: 'teleport',
+        playerId: owner.id,
+        fromX,
+        fromY,
+        toX: targetX,
+        toY: targetY,
+      });
+      this.emit({ type: 'message', text: `${owner.name} 乘着纸飞机瞬间空降！` });
+      for (const crate of [...this.crates]) {
+        if (dist(targetX, targetY - 14, crate.x, crate.y) <= 38) {
+          this.collectCrate(crate, owner);
+        }
+      }
+      return;
+    }
+
+    const weapon = WEAPONS[p.weapon];
+    let radMult = 1;
+    let dmgMult = 1;
+    if (p.isPow) {
+      radMult *= 1.5;
+      dmgMult *= 1.85;
+    }
+    if (p.isBoosted) {
+      radMult *= 1.25;
+      dmgMult *= 1.5;
+    }
+    const finalRadius = Math.round(weapon.radius * radMult);
+    const x = p.x;
+    const y = p.y;
     const info: ExplosionInfo = {
       x,
       y,
-      radius: weapon.radius,
-      weapon: weaponId,
-      playerId: ownerId,
+      radius: finalRadius,
+      weapon: p.weapon,
+      playerId: p.ownerId,
       team: owner.team,
+      isPow: p.isPow,
     };
     this.emit({ type: 'explosion', info });
 
+    // 检查是否有空投箱被炸开
+    for (const crate of [...this.crates]) {
+      if (dist(x, y, crate.x, crate.y) <= finalRadius + 22) {
+        this.collectCrate(crate, owner);
+      }
+    }
+
+    // 治愈弹
     if (weapon.heal && weapon.heal > 0) {
-      this.emit({ type: 'heal', x, y, radius: weapon.radius, playerId: ownerId, team: owner.team });
+      this.emit({ type: 'heal', x, y, radius: finalRadius, playerId: p.ownerId, team: owner.team });
       for (const player of this.players) {
         if (!player.alive || player.team !== owner.team) continue;
         const center = bodyCenter(player);
         const d = dist(x, y, center.x, center.y);
-        if (d <= weapon.radius + 12) {
-          const falloff = 1 - 0.35 * clamp(d / weapon.radius, 0, 1);
-          const amount = Math.round(weapon.heal * falloff);
+        if (d <= finalRadius + 14) {
+          const falloff = 1 - 0.35 * clamp(d / finalRadius, 0, 1);
+          const amount = Math.round(weapon.heal * dmgMult * falloff);
           const before = player.hp;
           player.hp = clamp(player.hp + amount, 0, player.maxHp);
           const healed = player.hp - before;
           if (healed > 0) {
-            this.emit({
-              type: 'message',
-              text: `${player.name} 恢复了 ${healed} 点生命`,
-            });
+            this.emit({ type: 'message', text: `${player.name} 恢复了 ${healed} 点生命` });
           }
         }
       }
       return;
     }
 
-    // Explosions on a character still tear up the ground beneath them, so
-    // direct hits leave the same satisfying crater as a ground hit.
+    // 伤害弹地形破坏
     const carveY = Math.max(y, this.terrain.heightAt(x) - 12);
-    this.terrain.carve(x, carveY, weapon.radius);
+    this.terrain.carve(x, carveY, finalRadius);
+
     for (const player of this.players) {
       if (!player.alive) continue;
       const center = bodyCenter(player);
       const d = dist(x, y, center.x, center.y);
-      if (d > weapon.radius + 14) continue;
-      const falloff = 1 - 0.58 * clamp(d / weapon.radius, 0, 1);
-      let amount = weapon.damage * falloff;
+      if (d > finalRadius + 16) continue;
+      const falloff = 1 - 0.58 * clamp(d / finalRadius, 0, 1);
+      let amount = weapon.damage * dmgMult * falloff;
       if (player.team === owner.team) {
         amount *= player.id === owner.id ? 0.7 : 0.56;
       }
-      if (directHit && player.id !== owner.id) {
-        amount *= 1.08;
+
+      // 直击中心暴击判定
+      const isCrit = directHit && d <= 15 && player.id !== owner.id;
+      if (isCrit) {
+        amount *= 1.35;
+        this.emit({
+          type: 'crit',
+          x: player.x,
+          y: player.y - 48,
+          text: 'CRITICAL! 暴击',
+          bonus: 1.35,
+        });
       }
-      const damage = Math.max(2, Math.round(amount));
+
+      // 高抛神射判定
+      if (p.life >= 2.0 && player.id !== owner.id && !isCrit) {
+        amount *= 1.18;
+        this.emit({
+          type: 'crit',
+          x: player.x,
+          y: player.y - 48,
+          text: '高抛神射!',
+          bonus: 1.18,
+        });
+      }
+
+      let damage = Math.max(2, Math.round(amount));
+
+      // 护盾抵扣
+      let absorbed = 0;
+      if (player.shield > 0) {
+        absorbed = Math.min(player.shield, damage);
+        player.shield -= absorbed;
+        damage -= absorbed;
+      }
+
       const actual = this.applyDamage(
         player,
         damage,
         owner,
         'damage',
         player.team !== owner.team,
+        absorbed,
       );
       if (player.team !== owner.team) {
         owner.hits += 1;
         owner.damageDealt += actual;
+        // 击中敌人怒气增加
+        owner.rage = clamp(owner.rage + 12, 0, 100);
       }
-      // A tiny nudge makes the physical comedy land.
+
+      // 受伤者增加怒气
+      if (player.alive && actual > 0) {
+        player.rage = clamp(player.rage + actual * 0.85 + 6, 0, 100);
+      }
+
+      // 物理后仰与位移
       if (player.alive) {
-        const kick = ((player.x >= x ? 1 : -1) * (1 - d / (weapon.radius + 14)) * 14) | 0;
+        const kick = ((player.x >= x ? 1 : -1) * (1 - d / (finalRadius + 16)) * (p.isPow ? 22 : 14)) | 0;
         player.x = clamp(player.x + kick, 40, this.terrain.width - 40);
         const ground = this.terrain.heightAt(player.x);
         if (player.y < ground - 1) player.onGround = false;
@@ -599,9 +883,10 @@ export class Game {
     source: Player | null,
     kind: 'damage' | 'fall',
     countKill: boolean,
+    absorbed = 0,
   ): number {
-    if (!player.alive || amount <= 0) return 0;
-    const actual = Math.min(player.hp, Math.round(amount));
+    if (!player.alive) return 0;
+    const actual = Math.min(player.hp, Math.max(0, Math.round(amount)));
     player.hp = Math.max(0, player.hp - actual);
     const center = bodyCenter(player);
     this.emit({
@@ -612,6 +897,7 @@ export class Game {
       y: center.y - 24,
       kind,
       sourceId: source?.id,
+      absorbed,
     });
     if (player.hp <= 0) {
       if (countKill && source && source.team !== player.team) source.kills += 1;
@@ -699,6 +985,9 @@ export class Game {
     }
     if (nextOrderIndex <= currentOrderIndex) {
       this.round += 1;
+      if (this.round >= 2) {
+        this.maybeSpawnCrate();
+      }
     }
     this.beginTurn(nextPlayer.id, true, true);
     if (this.isOnline && this.localIndex === 0) {
@@ -802,6 +1091,8 @@ export class Game {
         x: Math.round(player.x * 100) / 100,
         y: Math.round(player.y * 100) / 100,
         hp: player.hp,
+        shield: player.shield,
+        rage: player.rage,
         alive: player.alive,
         ammo: { ...player.ammo },
         damageDealt: player.damageDealt,
@@ -826,6 +1117,8 @@ export class Game {
       player.x = clamp(data.x, 0, this.terrain.width);
       player.y = clamp(data.y, 0, TERRAIN_MAX);
       player.hp = clamp(data.hp, 0, player.maxHp);
+      player.shield = data.shield ?? 0;
+      player.rage = data.rage ?? 0;
       player.alive = data.alive && player.hp > 0;
       player.ammo = { ...data.ammo };
       player.damageDealt = data.damageDealt;

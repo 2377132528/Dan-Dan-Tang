@@ -10,6 +10,11 @@ type SoundName =
   | 'defeat'
   | 'tick'
   | 'fly'
+  | 'pow'
+  | 'crate'
+  | 'teleport'
+  | 'shield'
+  | 'crit'
   | 'start';
 
 const STORAGE_KEY = 'ddt-wind-muted';
@@ -201,6 +206,28 @@ export class SoundManager {
         break;
       case 'tick':
         this.tone(920, 0.045, 0.03, 'square', 0, 700);
+        break;
+      case 'pow':
+        this.tone(140, 0.5, 0.16, 'sawtooth', 0, 480);
+        this.tone(280, 0.45, 0.14, 'triangle', 0.08, 920);
+        this.noise(0.4, 0.15, 'bandpass', 600, 2400, 0, 1.5);
+        break;
+      case 'crate':
+        this.tone(440, 0.1, 0.06, 'sine', 0);
+        this.tone(659, 0.12, 0.06, 'sine', 0.07);
+        this.tone(880, 0.22, 0.07, 'triangle', 0.14);
+        break;
+      case 'teleport':
+        this.tone(880, 0.22, 0.08, 'sine', 0, 220);
+        this.noise(0.2, 0.08, 'bandpass', 1400, 400);
+        break;
+      case 'shield':
+        this.tone(330, 0.15, 0.06, 'triangle', 0, 660);
+        this.tone(660, 0.25, 0.05, 'sine', 0.1);
+        break;
+      case 'crit':
+        this.tone(880, 0.18, 0.12, 'square', 0, 1200);
+        this.noise(0.18, 0.14, 'highpass', 1200, 400);
         break;
     }
   }

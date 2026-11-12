@@ -1,5 +1,7 @@
 import {
   CHARACTERS,
+  PROPS,
+  PROP_ORDER,
   TEAM_COLOR,
   TEAM_LABEL,
   WEAPONS,
@@ -7,7 +9,7 @@ import {
   WEAPON_ORDER,
 } from './data';
 import type { Game } from './game';
-import type { GameEvent, GameMode, Player, WeaponId } from './types';
+import type { GameEvent, GameMode, Player, PropId, WeaponId } from './types';
 import type { RoomState } from './online';
 import type { SoundManager } from './audio';
 
@@ -24,6 +26,11 @@ interface RosterRow {
 interface WeaponCard {
   card: HTMLElement;
   ammo: HTMLElement;
+}
+
+interface PropCard {
+  card: HTMLElement;
+  badge: HTMLElement;
 }
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -47,6 +54,8 @@ export class UI {
   private rosterSignature = '';
   private weaponCards = new Map<WeaponId, WeaponCard>();
   private weaponSignature = '';
+  private propCards = new Map<PropId, PropCard>();
+  private propsBuilt = false;
   private turnBannerTimer = 0;
   private tutorialVisible = false;
   private currentScreen: ScreenName = 'menu';
@@ -72,6 +81,8 @@ export class UI {
   onFire: (() => void) | null = null;
   onMove: ((direction: -1 | 0 | 1) => void) | null = null;
   onWeapon: ((weapon: WeaponId) => void) | null = null;
+  onProp: ((prop: PropId) => void) | null = null;
+  onPowToggle: (() => void) | null = null;
   onHelpOpen: (() => void) | null = null;
   onHelpClose: (() => void) | null = null;
 
@@ -196,6 +207,22 @@ export class UI {
       if (!weapon) return;
       this.sound.play('ui');
       this.onWeapon?.(weapon);
+    });
+
+    const propsBar = document.getElementById('props-bar');
+    propsBar?.addEventListener('click', (event) => {
+      const target = (event.target as HTMLElement).closest<HTMLElement>('[data-prop]');
+      if (!target) return;
+      const prop = target.dataset.prop as PropId | undefined;
+      if (!prop) return;
+      this.sound.unlock();
+      this.onProp?.(prop);
+    });
+
+    const powBtn = document.getElementById('btn-pow');
+    powBtn?.addEventListener('click', () => {
+      this.sound.unlock();
+      this.onPowToggle?.();
     });
   }
 
@@ -487,6 +514,7 @@ export class UI {
     if (signature !== this.rosterSignature) {
       this.rosterSignature = signature;
       this.buildRosters(game);
+      this.propsBuilt = false;
     }
     this.rebuildWeaponBar(game);
   }
@@ -573,6 +601,44 @@ export class UI {
     return `${player.ammo[id] ?? 0}`;
   }
 
+  private rebuildPropsBar(game: Game): void {
+    const player = game.activePlayer;
+    const bar = document.getElementById('props-bar');
+    if (!bar) return;
+    if (!this.propsBuilt) {
+      this.propsBuilt = true;
+      bar.innerHTML = PROP_ORDER.map((id) => {
+        const def = PROPS[id];
+        return `<button class="prop-card" data-prop="${id}" title="${def.name}：${def.description} (消耗${def.fuelCost}体力)">
+          <span class="prop-icon" style="--prop-color:${def.color}">${def.iconSvg}</span>
+          <span class="prop-name">${def.short}</span>
+          <span class="prop-badge" data-prop-count="${id}">${player.props[id] ?? 0}</span>
+        </button>`;
+      }).join('');
+      this.propCards.clear();
+      for (const id of PROP_ORDER) {
+        const card = bar.querySelector<HTMLElement>(`[data-prop="${id}"]`);
+        const badge = bar.querySelector<HTMLElement>(`[data-prop-count="${id}"]`);
+        if (card && badge) this.propCards.set(id, { card, badge });
+      }
+    }
+
+    const isLocalTurn = game.canLocalControl(player);
+    const aimPhase = game.phase === 'aim';
+
+    for (const id of PROP_ORDER) {
+      const entry = this.propCards.get(id);
+      if (!entry) continue;
+      const count = player.props[id] ?? 0;
+      entry.badge.textContent = `${count}`;
+      const def = PROPS[id];
+      const canUse = count > 0 && player.fuel >= def.fuelCost && isLocalTurn && aimPhase;
+      entry.card.classList.toggle('disabled', !canUse);
+      const isActive = player.activeProps.includes(id);
+      entry.card.classList.toggle('active', isActive);
+    }
+  }
+
   sync(game: Game, dragging: boolean): void {
     this.game = game;
     const player = game.activePlayer;
@@ -584,6 +650,18 @@ export class UI {
     this.setStyle('power-fill', 'width', `${Math.round(player.power)}%`);
     this.setStyle('fuel-fill', 'width', `${Math.round(player.fuel)}%`);
     this.setText('fuel-value', `${Math.round(player.fuel)}`);
+    this.setStyle('rage-fill', 'width', `${Math.round(player.rage)}%`);
+    this.setText('rage-value', `${Math.round(player.rage)}%`);
+
+    const powBtn = document.getElementById('btn-pow') as HTMLButtonElement | null;
+    if (powBtn) {
+      const isPowReady = player.rage >= 100;
+      powBtn.classList.toggle('ready', isPowReady);
+      powBtn.classList.toggle('active', !!player.isPow);
+      powBtn.disabled = !isLocalTurn || !aimPhase || !isPowReady;
+    }
+
+    this.rebuildPropsBar(game);
 
     const timerNumber = byId('timer-num');
     const timerRing = byId('timer-ring');
@@ -638,7 +716,8 @@ export class UI {
       if (!row) continue;
       const ratio = Math.max(0, rosterPlayer.hp / rosterPlayer.maxHp);
       row.hpFill.style.width = `${ratio * 100}%`;
-      row.hpNum.textContent = String(Math.max(0, Math.round(rosterPlayer.hp)));
+      const shieldText = rosterPlayer.shield > 0 ? ` (+${Math.round(rosterPlayer.shield)}🛡️)` : '';
+      row.hpNum.textContent = `${Math.max(0, Math.round(rosterPlayer.hp))}${shieldText}`;
       row.row.classList.toggle('is-active', rosterPlayer.id === game.activeIndex);
       row.row.classList.toggle('is-dead', !rosterPlayer.alive);
       row.name.textContent = rosterPlayer.name;
@@ -764,6 +843,22 @@ export class UI {
       this.toast('时间到！自动开炮！', 1800, 'danger');
     } else if (event.type === 'waiting') {
       this.toast('正在等待对手同步战场…', 1500);
+    } else if (event.type === 'pow') {
+      const p = game.players.find((item) => item.id === event.playerId);
+      this.toast(`🔥 ${p?.name ?? '角色'} 怒气爆发，必杀技就绪！`, 2000, 'danger');
+    } else if (event.type === 'shield') {
+      const p = game.players.find((item) => item.id === event.playerId);
+      this.toast(`🛡️ ${p?.name ?? '角色'} 开启了能量护盾！`, 1800, 'normal');
+    } else if (event.type === 'teleport') {
+      const p = game.players.find((item) => item.id === event.playerId);
+      this.toast(`✈️ ${p?.name ?? '角色'} 纸飞机精准传送！`, 1800, 'normal');
+    } else if (event.type === 'crateSpawn') {
+      this.toast('📦 战场上空掉落了神秘补给箱！', 2200, 'success');
+    } else if (event.type === 'crateCollect') {
+      const p = game.players.find((item) => item.id === event.playerId);
+      this.toast(`🎁 ${p?.name ?? '角色'} 拾取了补给箱（${event.text}）！`, 1800, 'success');
+    } else if (event.type === 'crit') {
+      this.toast('💥 直击靶心！高额暴击！', 1800, 'danger');
     }
   }
 

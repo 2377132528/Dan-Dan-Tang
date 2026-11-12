@@ -63,6 +63,7 @@
           </div>
 
           <div class="bottom-left">
+            <div class="props-bar" id="props-bar"></div>
             <div class="weapon-bar" id="weapon-bar"></div>
             <div class="move-panel" id="move-panel">
               <button class="move-btn" id="move-left" aria-label="向左移动">
@@ -84,7 +85,16 @@
               <div class="readout-divider"></div>
               <div class="readout-cell"><span class="readout-label">力度</span><strong id="power-value">60</strong></div>
               <div class="power-track"><div class="power-fill" id="power-fill"></div></div>
+              <div class="rage-wrap" id="rage-wrap">
+                <div class="rage-label"><span>怒气值</span><span id="rage-value">0%</span></div>
+                <div class="rage-track"><div class="rage-fill" id="rage-fill"></div></div>
+              </div>
             </div>
+            <button id="btn-pow" class="pow-btn disabled" title="怒气必杀技（满怒可用）" aria-label="怒气必杀技">
+              <span class="pow-glow"></span>
+              <span class="pow-flame">🔥</span>
+              <span class="pow-label">POW</span>
+            </button>
             <button id="btn-fire" class="fire-btn">
               <span class="fire-btn-glow"></span>
               <span class="fire-btn-label">开炮</span>
@@ -254,6 +264,15 @@
               <div class="help-step"><span>04</span><h3>团队轮换</h3><p>红蓝两队交替出手。击倒对方全部成员即可获胜。爆炸也会伤到自己，注意距离。</p></div>
             </div>
             <div class="weapon-help" id="weapon-help"></div>
+            <div class="props-help-title">战术道具与怒气必杀</div>
+            <div class="props-help-grid">
+              <div class="props-help-item"><span>✈️</span><div><strong>纸飞机 [Q]</strong><p>自身传送到着弹点，脱离深坑或近身包抄</p></div></div>
+              <div class="props-help-item"><span>⚡</span><div><strong>双发连射 [E]</strong><p>本回合连续发射两枚所选炮弹，爆发输出</p></div></div>
+              <div class="props-help-item"><span>🔥</span><div><strong>威力增幅 [R]</strong><p>下发炮弹伤害与爆炸范围提升 50%</p></div></div>
+              <div class="props-help-item"><span>🛡️</span><div><strong>能量护盾 [T]</strong><p>获得 40 点护盾吸收伤害，抵挡致命打击</p></div></div>
+              <div class="props-help-item"><span>💥</span><div><strong>POW 必杀 [B]</strong><p>受击与命中积攒怒气，满怒释放核爆轰炸！</p></div></div>
+              <div class="props-help-item"><span>📦</span><div><strong>战场空投</strong><p>回合随机飘落补给箱，走近或击中即可拾取</p></div></div>
+            </div>
             <div class="help-footer"><span>30 秒回合倒计时</span><span>提示：空格键也能蓄力开炮</span></div>
           </div>
         </section>
